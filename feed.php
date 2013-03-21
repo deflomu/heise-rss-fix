@@ -37,10 +37,12 @@ if( isset($_GET["url"]) ) {
 
 $do_reload = false;
 $do_sync = false;
+$do_removeDescription = false;
 
 if( isset($_GET['do']) ) {
     if( $_GET["do"]=="reload" ) $do_reload = true;
     if( $_GET["do"]=="sync" ) $do_sync = true;
+    if( $_GET["do"]=="removeDescription" ) $do_removeDescription = true;
 }
 
 # Do not diplay xml errors
@@ -64,7 +66,6 @@ function getID($string) {
 }
 
 function getArticle($url, $id, $date, $forceReload) {
-    $newDoc = new DOMDocument();
     if(!$forceReload and file_exists(CACHEFOLDER."/".$date."-".$id.".txt")) {
         $articleFertig = file_get_contents(CACHEFOLDER."/".$date."-".$id.".txt");
     } else {
@@ -75,6 +76,7 @@ function getArticle($url, $id, $date, $forceReload) {
 
         $articleFertig = 'Konnte Articleinhalt nicht finden.';
 
+        $newDoc = new DOMDocument();
         foreach ( $divs as $div ) {
             if( $div->hasAttribute('class') && $div->getAttribute('class') == 'meldung_wrapper' ) {
                 $newDoc->appendChild($newDoc->importNode($div,true));
@@ -85,7 +87,6 @@ function getArticle($url, $id, $date, $forceReload) {
         $articleFertig = strip_tags($articleFertig, '<span><a><pre><b><br><em><ul><li><hr><p><img><strong><table><tbody><td><tr><object><param>');
         $articleFertig = str_replace("\"/","\"http://www.heise.de/",$articleFertig);
         $articleFertig = '<div xmlns="http://www.w3.org/1999/xhtml">' . $articleFertig . '</div>';
-        
         if(!file_put_contents(CACHEFOLDER."/".$date."-".$id.".txt",$articleFertig)) die();
     }
     $files = glob(CACHEFOLDER."/*.txt");
@@ -93,8 +94,7 @@ function getArticle($url, $id, $date, $forceReload) {
         unlink($files[2]);
         $files = glob(CACHEFOLDER."/*.txt");
     }
-    $newDoc->loadHTML($articleFertig);
-    return $newDoc->getElementsByTagName('div')->item(0);
+    return $articleFertig;
 }
 
 $cacheFile = CACHEFOLDER."/".$feedUrl.".txt";
@@ -119,28 +119,21 @@ if($do_reload or $do_sync or !file_exists($cacheFile) or time() - filemtime($cac
             $forceReload = true;
         }
 
+        if($do_removeDescription) {
+            # Remove description element
+            $entry->removeChild($entry->getElementsByTagName('description')->item(0));
+        }
         # Remove <content:encoded> element
         $content = $entry->getElementsByTagNameNS('http://purl.org/rss/1.0/modules/content/', 'encoded')->item(0);
         if($content) {
             $entry->removeChild($content);
         }
-
         # Create content element and fill it with content
-        if ($entry->getElementsByTagName('content')->length == 0) {
-            $content = $xml->createElement('content');
-            $content->setAttribute('type', 'xhtml');
-            $entry->appendChild($content);
-        } else {
-            $content = $entry->getElementsByTagName('content')->item(0);
-        }
-
+        $content = $xml->createElementNS('http://purl.org/rss/1.0/modules/content/','encoded');
         $newContentDiv = getArticle($url, $id, $date, $forceReload);
-        if ($content->hasChildNodes()) {
-            while ($content->hasChildNodes()) {
-                $content->removeChild($content->firstChild);
-            }
-        }
-        $content->appendChild($xml->importNode($newContentDiv, true));
+        $cdata = $xml->createCDATASection($newContentDiv);
+        $content->appendChild($cdata);
+        $entry->appendChild($content);
     }
     $feed = $xml->saveXML();
     file_put_contents($cacheFile, $feed);
