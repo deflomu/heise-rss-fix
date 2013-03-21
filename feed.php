@@ -1,8 +1,8 @@
 <?php
 /**
-* Heise Feed Version 0.5
+* Heise Feed Version 0.6
 *
-* Copyright (c) 2012 elm@skweez.net, http://skweez.net/
+* Copyright (c) 2013 elm@skweez.net, http://skweez.net/
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -101,24 +101,30 @@ $cacheFile = CACHEFOLDER."/".$feedUrl.".txt";
 
 if($do_reload or $do_sync or !file_exists($cacheFile) or time() - filemtime($cacheFile) > FEEDINTERVAL) {
 	$xml = DOMDocument::load(urldecode($feedUrl));
-	$entries = $xml->getElementsByTagName('entry');
+	$entries = $xml->getElementsByTagName('item');
 
 	# Set self link
-	$xml->getElementsByTagName('link')->item(1)->attributes->item(1)->nodeValue=getCurrentPageUrl();
+	$xml->getElementsByTagName('link')->item(0)->nodeValue=getCurrentPageUrl();
 
 	for ($i=0; $i < $entries->length; $i++) {
 		$entry = $entries->item($i);
-		$url = str_replace('/from/atom10', '', $entry->getElementsByTagName('link')->item(0)->getAttribute('href'));
-		$date = $entry->getElementsByTagName('updated')->item(0)->nodeValue;
+		$url = $entry->getElementsByTagName('guid')->item(0)->nodeValue;
+		$date = $entry->getElementsByTagName('pubDate')->item(0)->nodeValue;
 	
 		# Get the id
-		$id = getID($entry->getElementsByTagName('id')->item(0)->nodeValue);
+		$id = getID($entry->getElementsByTagName('guid')->item(0)->nodeValue);
 
 		$forceReload = false;
 		if($do_reload or preg_match("/update/i",$entry->getElementsByTagName('title')->item(0)->nodeValue)) {
 			$forceReload = true;
 		}
-			
+
+		# Remove <content:encoded> element
+		$content = $entry->getElementsByTagNameNS('http://purl.org/rss/1.0/modules/content/', 'encoded')->item(0);
+		if($content) {
+			$entry->removeChild($content);
+		}
+
 		# Create content element and fill it with content
 		if ($entry->getElementsByTagName('content')->length == 0) {
 			$content = $xml->createElement('content');
